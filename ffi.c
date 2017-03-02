@@ -1907,24 +1907,20 @@ static complex_double check_complex(lua_State* L, int idx, void* p, struct ctype
 {
     if (ct->type == INVALID_TYPE) {
         double d = luaL_checknumber(L, idx);
-#ifdef HAVE_COMPLEX
+#ifndef _MSC_VER
         return d;
 #else
-        complex_double c;
-        c.real = d;
-        c.imag = 0;
+        complex_double c = {d, 0};
         return c;
 #endif
     } else if (ct->type == COMPLEX_DOUBLE_TYPE) {
         return *(complex_double*) p;
     } else if (ct->type == COMPLEX_FLOAT_TYPE) {
         complex_float* f = (complex_float*) p;
-#ifdef HAVE_COMPLEX
+#ifndef _MSC_VER
         return *f;
 #else
-        complex_double d;
-        d.real = f->real;
-        d.imag = f->imag;
+        complex_double d = {crealf(*f), cimagf(*f)};
         return d;
 #endif
     } else {
@@ -1966,11 +1962,11 @@ static void push_complex(lua_State* L, complex_double res, int ct_usr, const str
         *p = res;
     } else {
         complex_float* p = (complex_float*) push_cdata(L, ct_usr, ct);
-#ifdef HAVE_COMPLEX
+#ifndef _MSC_VER
         *p = (complex float) res;
-#else
-        p->real = (float) res.real;
-        p->imag = (float) res.imag;
+#else    
+        complex_float f = {(float) creal(res), (float) cimag(res)};
+        *p = f;
 #endif
     }
 }
@@ -2165,17 +2161,18 @@ static int cdata_add(lua_State* L)
     ct = rank(&lt) > rank(&rt) ? lt : rt;
 
     if (IS_COMPLEX(ct.type)) {
-        complex_double left, right, res;
+        complex_double left, right;
 
         left = check_complex(L, 1, lp, &lt);
         right = check_complex(L, 2, rp, &rt);
         assert(lua_gettop(L) == 4);
 
-#ifdef HAVE_COMPLEX
-        res = left + right;
+#ifndef _MSC_VER
+        complex_double res = left + right;
 #else
-        res.real = left.real + right.real;
-        res.imag = left.imag + right.imag;
+        double real_part = creal(left) + creal(right);
+        double imag_part = cimag(left) + cimag(right);
+        complex_double res = {real_part, imag_part};
 #endif
 
         push_complex(L, res, ct_usr, &ct);
@@ -2231,16 +2228,15 @@ static int cdata_sub(lua_State* L)
     ct = rank(&lt) > rank(&rt) ? lt : rt;
 
     if (IS_COMPLEX(ct.type)) {
-        complex_double left, right, res;
+        complex_double left, right;
 
         left = check_complex(L, 1, lp, &lt);
         right = check_complex(L, 2, rp, &rt);
 
-#ifdef HAVE_COMPLEX
-        res = left - right;
+#ifndef _MSC_VER
+        complex_double res = left - right;
 #else
-        res.real = left.real - right.real;
-        res.imag = left.imag - right.imag;
+        complex_double res = {creal(left) - creal(right), cimag(left) - cimag(right)};
 #endif
 
         push_complex(L, res, ct_usr, &ct);
@@ -2314,15 +2310,15 @@ static int cdata_sub(lua_State* L)
 #define MOD(l,r,s) s = l % r
 #define POW(l,r,s) s = pow(l, r)
 
-#ifdef HAVE_COMPLEX
+#ifndef _MSC_VER
 #define MULC(l,r,s) s = l * r
 #define DIVC(l,r,s) s = l / r
 #define MODC(l,r,s) (void) l, (void) r, memset(&s, 0, sizeof(s)), luaL_error(L, "NYI: complex mod")
 #define POWC(l,r,s) s = cpow(l, r)
 #else
-#define MULC(l,r,s) s.real = l.real * r.real - l.imag * r.imag, s.imag = l.real * r.imag + l.imag * r.real
-#define DIVC(l,r,s) s.real = (l.real * r.real + l.imag * r.imag) / (r.real * r.real + r.imag * r.imag), \
-                    s.imag = (l.imag * r.real - l.real * r.imag) / (r.real * r.real + r.imag * r.imag)
+#define MULC(l,r,s) s._Val[0] = l._Val[0] * r._Val[0] - l._Val[1] * r._Val[1], s._Val[1] = l._Val[0] * r._Val[1] + l._Val[1] * r._Val[0]
+#define DIVC(l,r,s) s._Val[0] = (l._Val[0] * r._Val[0] + l._Val[1] * r._Val[1]) / (r._Val[0] * r._Val[0] + r._Val[1] * r._Val[1]), \
+                    s._Val[1] = (l._Val[1] * r._Val[0] - l._Val[0] * r._Val[1]) / (r._Val[0] * r._Val[0] + r._Val[1] * r._Val[1])
 #define MODC(l,r,s) (void) l, (void) r, memset(&s, 0, sizeof(s)), luaL_error(L, "NYI: complex mod")
 #define POWC(l,r,s) (void) l, (void) r, memset(&s, 0, sizeof(s)), luaL_error(L, "NYI: complex pow")
 #endif
@@ -2409,10 +2405,10 @@ static int cdata_pow(lua_State* L)
 #define LT(l, r) (l) < (r)
 #define LE(l, r) (l) <= (r)
 
-#ifdef HAVE_COMPLEX
+#ifndef _MSC_VER
 #define EQC(l, r) (l) == (r)
 #else
-#define EQC(l, r) (l).real == (r).real && (l).imag == (r).imag
+#define EQC(l, r) (l)._Val[0] == (r)._Val[0] && (l)._Val[1] == (r)._Val[1]
 #endif
 
 #define LEC(l, r) EQC(l, r), luaL_error(L, "complex numbers are non-orderable")
@@ -2923,7 +2919,7 @@ static int cmodule_index(lua_State* L)
     case INT64_TYPE:
         {
             /* TODO: complex float/double need to be references if .re and
-             * .imag are setable */
+             * ._Val[1] are setable */
             void* p = push_cdata(L, -1, &ct);
             memcpy(p, sym, ct.base_size);
             return 1;
@@ -3274,8 +3270,12 @@ static int setup_upvals(lua_State* L)
         struct ctype ct;
         struct {char ch; complex_float v;} cf;
         struct {char ch; complex_double v;} cd;
-#if defined HAVE_LONG_DOUBLE && defined HAVE_COMPLEX
+#if defined HAVE_LONG_DOUBLE
+#ifndef _MSC_VER
         struct {char ch; complex long double v;} cld;
+#else
+        struct {char ch; _Lcomplex v;} cld;
+#endif
 #endif
 
         push_builtin(L, &ct, "void", VOID_TYPE, 0, 0, 0);
@@ -3299,8 +3299,12 @@ static int setup_upvals(lua_State* L)
         push_builtin(L, &ct, "intptr_t", INTPTR_TYPE, sizeof(uintptr_t), ALIGNOF(aptr), 0);
         push_builtin(L, &ct, "complex float", COMPLEX_FLOAT_TYPE, sizeof(complex_float), ALIGNOF(cf), 0);
         push_builtin(L, &ct, "complex double", COMPLEX_DOUBLE_TYPE, sizeof(complex_double), ALIGNOF(cd), 0);
-#if defined HAVE_LONG_DOUBLE && defined HAVE_COMPLEX
+#if defined HAVE_LONG_DOUBLE
+#ifndef _MSC_VER
         push_builtin(L, &ct, "complex long double", COMPLEX_LONG_DOUBLE_TYPE, sizeof(complex long double), ALIGNOF(cld), 0);
+#else
+            push_builtin(L, &ct, "complex long double", COMPLEX_LONG_DOUBLE_TYPE, sizeof(_Lcomplex), ALIGNOF(cld), 0);
+#endif
 #else
         push_builtin_undef(L, &ct, "complex long double", COMPLEX_LONG_DOUBLE_TYPE);
 #endif
@@ -3327,11 +3331,11 @@ static int setup_upvals(lua_State* L)
         ct.is_defined = 1;
         ct.base_size = sizeof(complex_double);
         pc = (complex_double*) push_cdata(L, 0, &ct);
-#ifdef HAVE_COMPLEX
+#ifndef _MSC_VER
         *pc = 1i;
 #else
-        pc->real = 0;
-        pc->imag = 1;
+        pc->_Val[0] = 0;
+        pc->_Val[1] = 1;
 #endif
         lua_setfield(L, -2, "i");
 

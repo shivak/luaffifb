@@ -43,7 +43,6 @@ extern "C" {
 #endif
 
 #include <complex.h>
-#define HAVE_COMPLEX
 #define HAVE_LONG_DOUBLE
 
 #ifndef NDEBUG
@@ -359,23 +358,9 @@ struct cdata {
 
 typedef void (*cfunction)(void);
 
-#ifdef HAVE_COMPLEX
-typedef double complex complex_double;
-typedef float complex complex_float;
-static complex_double mk_complex_double(double real, double imag) {
-    return real + imag * 1i;
-}
-static complex_double mk_complex_float(double real, double imag) {
-    return real + imag * 1i;
-}
-#else
-typedef struct {
-    double real, imag;
-} complex_double;
-
-typedef struct {
-    float real, imag;
-} complex_float;
+#ifdef _MSC_VER
+typedef _Dcomplex complex_double;
+typedef _Fcomplex complex_float;
 
 static complex_double mk_complex_double(double real, double imag) {
     complex_double ret = { real, imag };
@@ -385,18 +370,14 @@ static complex_float mk_complex_float(double real, double imag) {
     complex_float ret = { real, imag };
     return ret;
 }
-static double creal(complex_double c) {
-    return c.real;
+#else
+typedef double complex complex_double;
+typedef float complex complex_float;
+static complex_double mk_complex_double(double real, double imag) {
+    return real + imag * 1i;
 }
-static float crealf(complex_float c) {
-    return c.real;
-}
-
-static double cimag(complex_double c) {
-    return c.imag;
-}
-static float cimagf(complex_float c) {
-    return c.imag;
+static complex_double mk_complex_float(double real, double imag) {
+    return real + imag * 1i;
 }
 #endif
 

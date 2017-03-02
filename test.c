@@ -12,6 +12,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include <lua.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -20,11 +21,18 @@
 #endif
 
 #include <complex.h>
-#define HAVE_COMPLEX
 
 #ifdef __cplusplus
+extern "C" {
+# include <lua.h>
+# include <lauxlib.h>
+# include <lualib.h>
+}
 # define EXTERN_C extern "C"
 #else
+# include <lua.h>
+# include <lauxlib.h>
+# include <lualib.h>
 # define EXTERN_C extern
 #endif
 
@@ -35,6 +43,12 @@
 #else
 #define EXPORT EXTERN_C
 #endif
+
+EXPORT int luaopen_ffi_libtest(lua_State* L);
+int luaopen_ffi_libtest(lua_State* L)
+{
+    return 1;
+}
 
 enum e8 {
     FOO8,
@@ -55,11 +69,7 @@ EXPORT bool have_complex();
 
 bool have_complex()
 {
-#ifdef HAVE_COMPLEX
     return 1;
-#else
-    return 0;
-#endif
 }
 
 EXPORT bool is_msvc;
@@ -87,9 +97,22 @@ ADD(int32_t, add_i32)
 ADD(uint32_t, add_u32)
 ADD(int64_t, add_i64)
 ADD(uint64_t, add_u64)
-ADD(double, add_d)
-ADD(float, add_f)
-#ifdef HAVE_COMPLEX
+#ifdef _MSC_VER
+EXPORT _Dcomplex add_dc(_Dcomplex a, _Dcomplex b);
+_Dcomplex add_dc(_Dcomplex a, _Dcomplex b) {
+  double real_part = creal(a) + creal(b);
+  double imag_part = cimag(a) + cimag(b);
+  _Dcomplex result = {real_part, imag_part};
+  return result;
+}
+EXPORT _Fcomplex add_fc(_Fcomplex a, _Fcomplex b);
+_Fcomplex add_fc(_Fcomplex a, _Fcomplex b) {
+  double real_part = crealf(a) + crealf(b);
+  double imag_part = cimagf(a) + cimagf(b);
+  _Fcomplex result = {real_part, imag_part};
+  return result;
+}
+#else
 ADD(double complex, add_dc)
 ADD(float complex, add_fc)
 #endif
@@ -127,7 +150,12 @@ PRINT(enum e8, print_e8, "d")
 PRINT(enum e16, print_e16, "d")
 PRINT(enum e32, print_e32, "d")
 
-#ifdef HAVE_COMPLEX
+#ifdef _MSC_VER
+EXPORT int print_dc(char* buf, _Dcomplex val);
+EXPORT int print_fc(char* buf, _Fcomplex val);
+int print_dc(char* buf, _Dcomplex val) {return sprintf(buf, "%g+%gi", creal(val), cimag(val));}
+int print_fc(char* buf, _Fcomplex val) {return sprintf(buf, "%g+%gi", crealf(val), cimagf(val));}
+#else
 EXPORT int print_dc(char* buf, double complex val);
 EXPORT int print_fc(char* buf, float complex val);
 int print_dc(char* buf, double complex val) {return sprintf(buf, "%g+%gi", creal(val), cimag(val));}
@@ -160,12 +188,14 @@ bool (*ret_fp(bool (*val)(bool)))(bool)
         return print_##SUFFIX(buf+off, p->v); \
     }
 
-#ifdef HAVE_COMPLEX
+#ifdef _MSC_VER
+#define COMPLEX_ALIGN(ALIGNMENT, ATTR) \
+    ALIGN_UP(ATTR(_Dcomplex), ALIGNMENT, dc) \
+    ALIGN_UP(ATTR(_Fcomplex), ALIGNMENT, fc)
+#else
 #define COMPLEX_ALIGN(ALIGNMENT, ATTR) \
     ALIGN_UP(ATTR(double complex), ALIGNMENT, dc) \
     ALIGN_UP(ATTR(float complex), ALIGNMENT, fc)
-#else
-#define COMPLEX_ALIGN(ALIGNMENT, ATTR)
 #endif
 
 /* MSVC doesn't support __declspec(aligned(#)) on enums see C4329 */
@@ -588,7 +618,10 @@ CALL(_Bool, b)
 CALL(enum e8, e8)
 CALL(enum e16, e16)
 CALL(enum e32, e32)
-#ifdef HAVE_COMPLEX
+#ifdef _MSC_VER
+CALL(_Dcomplex, dc)
+CALL(_Fcomplex, fc)
+#else
 CALL(double complex, dc)
 CALL(float complex, fc)
 #endif
@@ -618,7 +651,10 @@ EXPORT uint32_t g_u32;
 EXPORT uint64_t g_u64;
 EXPORT float g_f;
 EXPORT double g_d;
-#ifdef HAVE_COMPLEX
+#ifdef _MSC_VER
+EXPORT _Dcomplex g_dc;
+EXPORT _Fcomplex g_fc;
+#else
 EXPORT double complex g_dc;
 EXPORT float complex g_fc;
 #endif
@@ -642,7 +678,10 @@ uint32_t g_u32 = 32;
 uint64_t g_u64 = 64;
 float g_f = 3;
 double g_d = 5;
-#ifdef HAVE_COMPLEX
+#ifdef _MSC_VER
+_Dcomplex g_dc = {7, 8};
+_Fcomplex g_fc = {6, 9};
+#else
 double complex g_dc = 7+8i;
 float complex g_fc = 6+9i;
 #endif
